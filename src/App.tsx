@@ -3,6 +3,7 @@ import type { ChangeEvent, ComponentType } from 'react'
 import {
   Activity,
   AlarmClock,
+  ArrowLeft,
   BarChart3,
   Bell,
   BookOpen,
@@ -30,8 +31,9 @@ import {
 } from 'lucide-react'
 import './App.css'
 
-type Person = 'Kristom' | 'Hanna'
-type Tab = 'home' | 'calendar' | 'progress' | 'profile'
+type Person = 'KRISTOM' | 'HANNA'
+type LegacyPerson = Person | 'Kristom' | 'Hanna'
+type Tab = 'home' | 'day' | 'calendar' | 'progress' | 'profile'
 type ViewMode = 'week' | 'month' | 'arc'
 type IconType = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
 
@@ -53,10 +55,11 @@ type AppData = Record<Person, Record<string, DailyEntry>>
 
 const STORAGE_KEY = 'winter-arc-2026-local-state-v1'
 const PROFILE_KEY = 'winter-arc-2026-active-profile'
+const ONBOARDING_KEY = 'winter-arc-2026-onboarding-complete'
 const START_DATE = '2026-10-01'
 const END_DATE = '2026-12-31'
 const TOTAL_DAYS = 92
-const PARTICIPANTS: Person[] = ['Kristom', 'Hanna']
+const PARTICIPANTS: Person[] = ['KRISTOM', 'HANNA']
 
 const habits: Habit[] = [
   { id: 'wake', name: 'Wake Up by 6:30 AM', helper: 'Start before the day starts asking questions.', icon: AlarmClock },
@@ -79,8 +82,8 @@ const emptyEntry = (): DailyEntry => ({
 })
 
 const emptyData = (): AppData => ({
-  Kristom: {},
-  Hanna: {},
+  KRISTOM: {},
+  HANNA: {},
 })
 
 function dateFromKey(dateKey: string) {
@@ -160,10 +163,10 @@ function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return emptyData()
-    const parsed = JSON.parse(raw) as AppData
+    const parsed = JSON.parse(raw) as Record<LegacyPerson, Record<string, DailyEntry> | undefined>
     return {
-      Kristom: parsed.Kristom ?? {},
-      Hanna: parsed.Hanna ?? {},
+      KRISTOM: parsed.KRISTOM ?? parsed.Kristom ?? {},
+      HANNA: parsed.HANNA ?? parsed.Hanna ?? {},
     }
   } catch {
     return emptyData()
@@ -172,7 +175,11 @@ function loadData(): AppData {
 
 function loadProfile(): Person {
   const saved = localStorage.getItem(PROFILE_KEY)
-  return saved === 'Hanna' ? 'Hanna' : 'Kristom'
+  return saved === 'HANNA' || saved === 'Hanna' ? 'HANNA' : 'KRISTOM'
+}
+
+function loadOnboardingComplete() {
+  return localStorage.getItem(ONBOARDING_KEY) === 'true'
 }
 
 function scoreMessage(percent: number) {
@@ -181,6 +188,20 @@ function scoreMessage(percent: number) {
   if (percent >= 51) return 'Keep pushing.'
   if (percent >= 26) return 'Momentum is building.'
   return 'Start strong.'
+}
+
+function getStreakCue(stats: ReturnType<typeof buildStats>, todayCompleted: number) {
+  if (todayCompleted === habits.length) {
+    return stats.currentStreak > 1
+      ? `STREAK EXTENDED TO ${stats.currentStreak} DAYS`
+      : 'STREAK STARTED TODAY'
+  }
+
+  if (stats.currentStreak > 0) {
+    return `${habits.length - todayCompleted} RULES LEFT TO PROTECT ${stats.currentStreak} DAYS`
+  }
+
+  return `${habits.length - todayCompleted} RULES LEFT TO START A STREAK`
 }
 
 function monthName(monthIndex: number) {
@@ -332,6 +353,13 @@ function HabitCard({
         </span>
       </button>
 
+      {isPhoto && photo && (
+        <a className="photo-preview" href={photo} target="_blank" rel="noreferrer" aria-label="View uploaded progress photo">
+          <img src={photo} alt="Uploaded progress" />
+          <span>Progress photo saved</span>
+        </a>
+      )}
+
       {isPhoto && !disabled && (
         <div className="photo-actions">
           <label className="mini-action">
@@ -405,25 +433,79 @@ function DailyChecklist({
   )
 }
 
+function Onboarding({ onComplete }: { onComplete: () => void }) {
+  const [step, setStep] = useState(0)
+  const screens = [
+    {
+      kicker: 'WINTER ARC 2026',
+      title: '92 DAYS. 12 RULES. ONE COMMITMENT.',
+      text: 'A focused mobile tracker built for the daily discipline loop.',
+    },
+    {
+      kicker: 'OCT 01 TO DEC 31',
+      title: 'TODAY OPENS AUTOMATICALLY.',
+      text: 'The app follows Asia/Kolkata dates and keeps past days editable.',
+    },
+    {
+      kicker: 'KRISTOM X HANNA',
+      title: 'ACCOUNTABILITY WITHOUT NOISE.',
+      text: 'Track your own habits, compare progress, and protect the streak.',
+    },
+  ]
+  const current = screens[step]
+  const isLast = step === screens.length - 1
+
+  return (
+    <main className="onboarding-shell">
+      <section className="onboarding-card">
+        <span>{current.kicker}</span>
+        <h1>{current.title}</h1>
+        <p>{current.text}</p>
+        <div className="onboarding-progress" aria-hidden="true">
+          {screens.map((screen, index) => (
+            <i key={screen.kicker} className={index <= step ? 'active' : ''} />
+          ))}
+        </div>
+        <button
+          className="onboarding-button"
+          type="button"
+          onClick={() => {
+            if (isLast) {
+              onComplete()
+              return
+            }
+            setStep((value) => value + 1)
+          }}
+        >
+          {isLast ? 'START WINTER ARC' : 'CONTINUE'}
+        </button>
+      </section>
+    </main>
+  )
+}
+
 function App() {
   const [data, setData] = useLocalState()
   const [activePerson, setActivePerson] = useState<Person>(() => loadProfile())
   const [activeTab, setActiveTab] = useState<Tab>('home')
+  const [onboardingComplete, setOnboardingComplete] = useState(() => loadOnboardingComplete())
   const [todayKey, setTodayKey] = useState(() => todayInKolkata())
   const [selectedDate, setSelectedDate] = useState(() => todayInKolkata())
   const [monthIndex, setMonthIndex] = useState(() => clamp(dateFromKey(todayInKolkata()).getUTCMonth() - 9, 0, 2))
   const [progressMode, setProgressMode] = useState<ViewMode>('month')
   const [celebrate, setCelebrate] = useState(false)
 
-  const currentEntry = ensureEntry(data, activePerson, selectedDate)
+  const activeDate = activeTab === 'day' ? selectedDate : todayKey
+  const currentEntry = ensureEntry(data, activePerson, activeDate)
   const todayEntry = ensureEntry(data, activePerson, todayKey)
-  const partner = activePerson === 'Kristom' ? 'Hanna' : 'Kristom'
+  const partner = activePerson === 'KRISTOM' ? 'HANNA' : 'KRISTOM'
   const partnerToday = ensureEntry(data, partner, todayKey)
-  const selectedIsFuture = selectedDate > todayKey || selectedDate < START_DATE
-  const selectedIsPast = selectedDate < todayKey && selectedDate >= START_DATE
+  const selectedIsFuture = activeDate > todayKey || activeDate < START_DATE
+  const selectedIsPast = activeDate < todayKey && activeDate >= START_DATE
   const selectedPercent = percentFromParts(completedCount(currentEntry), habits.length)
   const stats = useMemo(() => buildStats(data, activePerson, todayKey), [data, activePerson, todayKey])
   const partnerStats = useMemo(() => buildStats(data, partner, todayKey), [data, partner, todayKey])
+  const streakCue = getStreakCue(stats, completedCount(todayEntry))
 
   useEffect(() => {
     localStorage.setItem(PROFILE_KEY, activePerson)
@@ -465,7 +547,7 @@ function App() {
     if (selectedIsFuture) return
 
     const wasPerfect = completedCount(currentEntry) === habits.length
-    updateEntry(selectedDate, (entry) => {
+    updateEntry(activeDate, (entry) => {
       entry.completed[habitId] = !entry.completed[habitId]
       return entry
     })
@@ -479,7 +561,7 @@ function App() {
 
   const updateNote = (note: string) => {
     if (selectedIsFuture) return
-    updateEntry(selectedDate, (entry) => ({ ...entry, note }))
+    updateEntry(activeDate, (entry) => ({ ...entry, note }))
   }
 
   const updatePhoto = (event: ChangeEvent<HTMLInputElement>) => {
@@ -488,7 +570,7 @@ function App() {
 
     const reader = new FileReader()
     reader.onload = () => {
-      updateEntry(selectedDate, (entry) => ({
+      updateEntry(activeDate, (entry) => ({
         ...entry,
         photo: String(reader.result),
         completed: { ...entry.completed, photo: true },
@@ -500,7 +582,7 @@ function App() {
 
   const deletePhoto = () => {
     if (selectedIsFuture) return
-    updateEntry(selectedDate, (entry) => ({
+    updateEntry(activeDate, (entry) => ({
       ...entry,
       photo: undefined,
       completed: { ...entry.completed, photo: false },
@@ -509,11 +591,22 @@ function App() {
 
   const openDate = (dateKey: string) => {
     setSelectedDate(dateKey)
-    setActiveTab('home')
+    setActiveTab('day')
   }
 
   const remainingHabits = habits.filter((habit) => !todayEntry.completed[habit.id])
   const challengeState = todayKey < START_DATE ? 'before' : todayKey > END_DATE ? 'complete' : 'active'
+
+  if (!onboardingComplete) {
+    return (
+      <Onboarding
+        onComplete={() => {
+          localStorage.setItem(ONBOARDING_KEY, 'true')
+          setOnboardingComplete(true)
+        }}
+      />
+    )
+  }
 
   return (
     <main className="app-shell">
@@ -561,13 +654,13 @@ function App() {
 
           <section className="hero-card">
             <div className="hero-topline">
-              <span>{selectedDate === todayKey ? 'Day Today' : selectedIsPast ? 'Past Day' : 'Not Started'}</span>
-              <span>Day {dayNumber(selectedDate)} of 92</span>
+              <span>Day Today</span>
+              <span>Day {dayNumber(activeDate)} of 92</span>
             </div>
             <div className="hero-content">
-              <ProgressRing percent={selectedPercent} label={selectedDate === todayKey ? 'Today' : 'Score'} />
+              <ProgressRing percent={selectedPercent} label="Today" />
               <div>
-                <p>{formatDay(selectedDate)}</p>
+                <p>{formatDay(activeDate)}</p>
                 <strong>{completedCount(currentEntry)} / 12</strong>
                 <span>{selectedIsFuture ? 'Not started yet.' : `${12 - completedCount(currentEntry)} left`}</span>
               </div>
@@ -578,7 +671,7 @@ function App() {
           {selectedIsPast && (
             <section className="edit-banner">
               <strong>Past Day</strong>
-              <span>You're editing {formatDay(selectedDate)}. Changes update your stats instantly.</span>
+              <span>You're editing {formatDay(activeDate)}. Changes update your stats instantly.</span>
             </section>
           )}
 
@@ -586,6 +679,14 @@ function App() {
             <MetricCard icon={Flame} label="Current Streak" value={`${stats.currentStreak} Days`} />
             <MetricCard icon={Trophy} label="Perfect Days" value={`${stats.perfectDays}`} />
             <MetricCard icon={Target} label="Overall" value={`${stats.overallPercent}%`} />
+          </section>
+
+          <section className="streak-card">
+            <div>
+              <span>Streak Intelligence</span>
+              <strong>{streakCue}</strong>
+            </div>
+            <small>Longest streak: {stats.longestStreak} days</small>
           </section>
 
           <section className="status-card">
@@ -630,6 +731,46 @@ function App() {
             onDeletePhoto={deletePhoto}
           />
         </>
+      )}
+
+      {activeTab === 'day' && (
+        <section className="page-panel day-detail-panel">
+          <button className="back-button" type="button" onClick={() => setActiveTab('calendar')}>
+            <ArrowLeft size={18} />
+            Back to calendar
+          </button>
+          <div className="detail-hero">
+            <div className="hero-topline">
+              <span>{selectedIsFuture ? 'Not Started Yet' : selectedIsPast ? 'Past Day' : 'Today'}</span>
+              <span>Day {dayNumber(activeDate)} / 92</span>
+            </div>
+            <div className="hero-content">
+              <ProgressRing percent={selectedPercent} label="Score" />
+              <div>
+                <p>{formatDay(activeDate)}</p>
+                <strong>{completedCount(currentEntry)} / 12</strong>
+                <span>{selectedIsFuture ? 'Future days are read-only.' : `${12 - completedCount(currentEntry)} rules left`}</span>
+              </div>
+            </div>
+            <p className="score-message">{selectedIsFuture ? 'This day has not opened yet.' : scoreMessage(selectedPercent)}</p>
+          </div>
+
+          {selectedIsPast && (
+            <section className="edit-banner">
+              <strong>Editing</strong>
+              <span>{formatDay(activeDate)}. Your statistics update immediately.</span>
+            </section>
+          )}
+
+          <DailyChecklist
+            entry={currentEntry}
+            disabled={selectedIsFuture}
+            onToggle={toggleHabit}
+            onNote={updateNote}
+            onPhoto={updatePhoto}
+            onDeletePhoto={deletePhoto}
+          />
+        </section>
       )}
 
       {activeTab === 'calendar' && (
@@ -713,7 +854,12 @@ function App() {
         ].map(([tab, Icon, label]) => {
           const NavIcon = Icon as IconType
           return (
-            <button key={tab as string} className={activeTab === tab ? 'active' : ''} type="button" onClick={() => setActiveTab(tab as Tab)}>
+            <button
+              key={tab as string}
+              className={activeTab === tab || (activeTab === 'day' && tab === 'calendar') ? 'active' : ''}
+              type="button"
+              onClick={() => setActiveTab(tab as Tab)}
+            >
               <NavIcon size={20} />
               <span>{label as string}</span>
             </button>
@@ -789,6 +935,17 @@ function ProgressView({
   mode: ViewMode
 }) {
   const lastSeven = allChallengeDates().filter((date) => date <= todayKey).slice(-7)
+  const personTodayPercent = percentFromParts(completedCount(ensureEntry(data, person, todayKey)), habits.length)
+  const partnerTodayPercent = percentFromParts(completedCount(ensureEntry(data, partner, todayKey)), habits.length)
+  const strongestHabit = [...stats.habitRates].sort((a, b) => b.percent - a.percent)[0]
+  const needsAttentionHabit = [...stats.habitRates].sort((a, b) => a.percent - b.percent)[0]
+  const comparisonRows = [
+    ['Today', `${personTodayPercent}%`, `${partnerTodayPercent}%`],
+    ['Overall', `${stats.overallPercent}%`, `${partnerStats.overallPercent}%`],
+    ['Perfect Days', `${stats.perfectDays}`, `${partnerStats.perfectDays}`],
+    ['Current Streak', `${stats.currentStreak}`, `${partnerStats.currentStreak}`],
+    ['Longest Streak', `${stats.longestStreak}`, `${partnerStats.longestStreak}`],
+  ]
 
   return (
     <div className="progress-stack">
@@ -843,7 +1000,7 @@ function ProgressView({
       {mode === 'arc' && (
         <>
           <section className="comparison-card">
-            <h2>{person} x {partner}</h2>
+            <h2>{person} X {partner}</h2>
             <div className="compare-grid">
               <div>
                 <span>{person}</span>
@@ -855,6 +1012,25 @@ function ProgressView({
                 <strong>{partnerStats.overallPercent}%</strong>
                 <small>{partnerStats.perfectDays} perfect days</small>
               </div>
+            </div>
+            <div className="comparison-table" aria-label={`${person} and ${partner} comparison`}>
+              {comparisonRows.map(([label, personValue, partnerValue]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{personValue}</strong>
+                  <strong>{partnerValue}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="insight-pair">
+              <p>
+                <span>Strongest Habit</span>
+                {strongestHabit?.name ?? 'No data yet'}
+              </p>
+              <p>
+                <span>Needs Attention</span>
+                {needsAttentionHabit?.name ?? 'No data yet'}
+              </p>
             </div>
           </section>
           <section className="habit-performance">
