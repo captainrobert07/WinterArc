@@ -55,7 +55,6 @@ type AppData = Record<Person, Record<string, DailyEntry>>
 
 const STORAGE_KEY = 'winter-arc-2026-local-state-v1'
 const PROFILE_KEY = 'winter-arc-2026-active-profile'
-const ONBOARDING_KEY = 'winter-arc-2026-onboarding-complete'
 const START_DATE = '2026-10-01'
 const END_DATE = '2026-12-31'
 const TOTAL_DAYS = 92
@@ -176,10 +175,6 @@ function loadData(): AppData {
 function loadProfile(): Person {
   const saved = localStorage.getItem(PROFILE_KEY)
   return saved === 'HANNA' || saved === 'Hanna' ? 'HANNA' : 'KRISTOM'
-}
-
-function loadOnboardingComplete() {
-  return localStorage.getItem(ONBOARDING_KEY) === 'true'
 }
 
 function scoreMessage(percent: number) {
@@ -433,62 +428,10 @@ function DailyChecklist({
   )
 }
 
-function Onboarding({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState(0)
-  const screens = [
-    {
-      kicker: 'WINTER ARC 2026',
-      title: '92 DAYS. 12 RULES. ONE COMMITMENT.',
-      text: 'A focused mobile tracker built for the daily discipline loop.',
-    },
-    {
-      kicker: 'OCT 01 TO DEC 31',
-      title: 'TODAY OPENS AUTOMATICALLY.',
-      text: 'The app follows Asia/Kolkata dates and keeps past days editable.',
-    },
-    {
-      kicker: 'KRISTOM X HANNA',
-      title: 'ACCOUNTABILITY WITHOUT NOISE.',
-      text: 'Track your own habits, compare progress, and protect the streak.',
-    },
-  ]
-  const current = screens[step]
-  const isLast = step === screens.length - 1
-
-  return (
-    <main className="onboarding-shell">
-      <section className="onboarding-card">
-        <span>{current.kicker}</span>
-        <h1>{current.title}</h1>
-        <p>{current.text}</p>
-        <div className="onboarding-progress" aria-hidden="true">
-          {screens.map((screen, index) => (
-            <i key={screen.kicker} className={index <= step ? 'active' : ''} />
-          ))}
-        </div>
-        <button
-          className="onboarding-button"
-          type="button"
-          onClick={() => {
-            if (isLast) {
-              onComplete()
-              return
-            }
-            setStep((value) => value + 1)
-          }}
-        >
-          {isLast ? 'START WINTER ARC' : 'CONTINUE'}
-        </button>
-      </section>
-    </main>
-  )
-}
-
 function App() {
   const [data, setData] = useLocalState()
   const [activePerson, setActivePerson] = useState<Person>(() => loadProfile())
   const [activeTab, setActiveTab] = useState<Tab>('home')
-  const [onboardingComplete, setOnboardingComplete] = useState(() => loadOnboardingComplete())
   const [todayKey, setTodayKey] = useState(() => todayInKolkata())
   const [selectedDate, setSelectedDate] = useState(() => todayInKolkata())
   const [monthIndex, setMonthIndex] = useState(() => clamp(dateFromKey(todayInKolkata()).getUTCMonth() - 9, 0, 2))
@@ -596,17 +539,6 @@ function App() {
 
   const remainingHabits = habits.filter((habit) => !todayEntry.completed[habit.id])
   const challengeState = todayKey < START_DATE ? 'before' : todayKey > END_DATE ? 'complete' : 'active'
-
-  if (!onboardingComplete) {
-    return (
-      <Onboarding
-        onComplete={() => {
-          localStorage.setItem(ONBOARDING_KEY, 'true')
-          setOnboardingComplete(true)
-        }}
-      />
-    )
-  }
 
   return (
     <main className="app-shell">
