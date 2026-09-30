@@ -1,0 +1,19 @@
+{
+  "name": "Winter Arc 2026",
+  "short_name": "Winter Arc",
+  "description": "A mobile-first 92-day discipline and habit tracker for Kristom and Hanna.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080A0A",
+  "theme_color": "#080A0A",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "128x128",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
